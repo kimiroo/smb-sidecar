@@ -36,7 +36,13 @@ def get_remote_mtime_via_cli():
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=const.SMB_TIMEOUT
+        )
 
         match = re.search(r"write_time:\s+(.+)", result.stdout)
         if match:
@@ -74,7 +80,13 @@ def worker():
 
     try:
         log.info('Downloading source file via smbclient CLI...')
-        subprocess.run(download_cmd, capture_output=True, text=True, check=True, timeout=8)
+        subprocess.run(
+            download_cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=const.SMB_TIMEOUT
+        )
 
         log.info('Copying source file to target destination...')
         remote_tmp = const.TARGET_PATH + '.tmp'
