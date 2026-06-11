@@ -4,7 +4,7 @@ import logging
 log = logging.getLogger(__name__)
 
 __all__ = [
-    'HOSTNAME',
+    'SHARE_PATH',
     'USERNAME',
     'PASSWORD',
     'SOURCE_PATH',
@@ -15,7 +15,7 @@ __all__ = [
 ]
 
 REQUIRED_ENV_VARS = {
-    'HOSTNAME',
+    'SHARE_PATH',
     'USERNAME',
     'PASSWORD',
     'SOURCE_PATH',
@@ -31,7 +31,7 @@ if missing_vars:
     raise EnvironmentError(err_msg)
 
 # Load env vars
-HOSTNAME = os.environ.get('HOSTNAME')
+SHARE_PATH = os.environ.get('SHARE_PATH')
 USERNAME = os.environ.get('USERNAME')
 PASSWORD = os.environ.get('PASSWORD')
 SOURCE_PATH = os.environ.get('SOURCE_PATH')

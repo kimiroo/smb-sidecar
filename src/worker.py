@@ -1,6 +1,8 @@
 import os
+import re
 import logging
-import traceback
+import subprocess
+import datetime
 import shutil
 
 STATE_PATH = '/state/mtime'
@@ -8,6 +10,8 @@ TMP_FILE_PATH = '/tmp/smb_cache.tmp'
 
 logging.getLogger('smbprotocol').setLevel(logging.WARNING)
 log = logging.getLogger('worker')
+
+import util.const as const
 
 def get_last_mtime():
     if not os.path.exists(STATE_PATH):
@@ -24,42 +28,56 @@ def save_last_mtime(mtime):
     with open(STATE_PATH, 'w', encoding='utf-8') as f:
         f.write(str(mtime))
 
-def worker():
-    import smbclient
-    from smbprotocol.exceptions import LogonFailure, SMBAuthenticationError
-
-    import util.const as const
+def get_remote_mtime_via_cli():
+    cmd = [
+        "smbclient", const.SHARE_PATH,
+        f"-U={const.USERNAME}%{const.PASSWORD}",
+        "-c", f"allinfo {const.SOURCE_PATH}"
+    ]
 
     try:
-        smbclient.register_session(
-            server=const.HOSTNAME,
-            username=const.USERNAME,
-            password=const.PASSWORD,
-            encrypt=True,
-            connection_timeout=const.SMB_TIMEOUT
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=5)
 
-        target_file_stat = smbclient.stat(const.SOURCE_PATH)
-        target_mtime = target_file_stat.st_mtime
+        match = re.search(r"write_time:\s+(.+)", result.stdout)
+        if match:
+            raw_time_str = match.group(1).strip()
+            clean_time_str = " ".join(raw_time_str.split()[:5]) # "Wed Jun 11 14:15:00 2026"
+            dt = datetime.datetime.strptime(clean_time_str, "%a %b %d %H:%M:%S %Y")
+            return dt.timestamp()
 
-        if target_mtime == get_last_mtime():
-            log.debug('Source file not modified. Skipping sync...')
-            return
+    except subprocess.CalledProcessError as e:
+        log.error(f"smbclient allinfo failed. stderr: {e.stderr.strip()}")
+    except Exception as e:
+        log.error(f"Failed to fetch remote mtime via CLI: {e}")
+    return None
 
-        log.info('Detected source file change.')
+def worker():
+    target_mtime = get_remote_mtime_via_cli()
 
-        log.info('Initializing...')
-        if os.path.exists(TMP_FILE_PATH):
-            os.remove(TMP_FILE_PATH)
+    if target_mtime is None:
+        log.error('Could not resolve remote file status. Skipping this cycle...')
+        return
 
-        with smbclient.open_file(const.SOURCE_PATH, mode='rb') as src_f:
-            with open(TMP_FILE_PATH, 'wb') as tmp_f:
-                log.info('Copying source file to temp directory...')
-                shutil.copyfileobj(src_f, tmp_f)
+    if target_mtime == get_last_mtime():
+        log.debug('Source file not modified. Skipping sync...')
+        return
+
+    log.info('Detected source file change.')
+    if os.path.exists(TMP_FILE_PATH):
+        os.remove(TMP_FILE_PATH)
+
+    download_cmd = [
+        "smbclient", const.SHARE_PATH,
+        f"-U={const.USERNAME}%{const.PASSWORD}",
+        "-c", f"get {const.SOURCE_PATH} {TMP_FILE_PATH}"
+    ]
+
+    try:
+        log.info('Downloading locked file via smbclient CLI...')
+        subprocess.run(download_cmd, capture_output=True, text=True, check=True, timeout=8)
 
         log.info('Copying source file to target destination...')
         remote_tmp = const.TARGET_PATH + '.tmp'
-
         shutil.move(TMP_FILE_PATH, remote_tmp)
 
         if os.path.exists(const.TARGET_PATH):
@@ -71,10 +89,7 @@ def worker():
 
         log.info('Sync successful.')
 
-    except (LogonFailure, SMBAuthenticationError) as e:
-        log.error(f'Failed to authenticate: {e}')
-    except (TimeoutError, ValueError):
-        log.debug('SMB server response timed out.')
+    except subprocess.CalledProcessError as e:
+        log.error(f'CLI download failed: {e.stderr.strip()}')
     except Exception as e:
         log.critical(f'Unexpected error: {e}')
-        traceback.print_exc()

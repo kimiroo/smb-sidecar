@@ -4,8 +4,8 @@ LABEL org.opencontainers.image.source=https://github.com/kimiroo/smb-sidecar
 
 WORKDIR /app
 
-# Install tini
-RUN apk add --no-cache tini
+# Install tini and samba-client
+RUN apk add --no-cache tini samba-client
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # Copy dependency data
