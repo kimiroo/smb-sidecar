@@ -46,16 +46,16 @@ def get_remote_mtime_via_cli():
             return dt.timestamp()
 
     except subprocess.CalledProcessError as e:
-        log.error(f"smbclient allinfo failed. stderr: {e.stderr.strip()}")
+        log.debug(f"smbclient allinfo failed. stderr: {e.stderr.strip()}")
     except Exception as e:
-        log.error(f"Failed to fetch remote mtime via CLI: {e}")
+        log.debug(f"Failed to fetch remote mtime via CLI: {e}")
     return None
 
 def worker():
     target_mtime = get_remote_mtime_via_cli()
 
     if target_mtime is None:
-        log.error('Could not resolve remote file status. Skipping this cycle...')
+        log.debug('Could not resolve remote file status. Skipping this cycle...')
         return
 
     if target_mtime == get_last_mtime():
@@ -73,7 +73,7 @@ def worker():
     ]
 
     try:
-        log.info('Downloading locked file via smbclient CLI...')
+        log.info('Downloading source file via smbclient CLI...')
         subprocess.run(download_cmd, capture_output=True, text=True, check=True, timeout=8)
 
         log.info('Copying source file to target destination...')
